@@ -391,6 +391,15 @@ hxcLbaSectorGet:
                     st      0(a2,d2.w)
 
 .copysector:    ;copy the sector
+                ;verify that a0 and a1 are even
+                    ;at least one of (a0,a1) is even (because we read/write to our buffer)
+                    move.w  a0,d0
+                    move.w  a1,d1
+                    or.b    d1,d0
+                    btst    #0,d0
+                    bne.s   .odd
+                
+                ;even
                     movem.l (a0)+,d0-d7/a2-a6           ; 52 bytes
                     movem.l d0-d7/a2-a6,(a1)            ; 52 bytes copied
                     movem.l (a0)+,d0-d7/a2-a6
@@ -411,6 +420,15 @@ hxcLbaSectorGet:
                     movem.l d0-d7/a2-a6,416(a1)         ;468 bytes copied
                     movem.l (a0)+,d0-d7/a2-a4           ; 44 bytes
                     movem.l d0-d7/a2-a4,468(a1)         ;512 bytes copied
+                bra.s   .return
+
+.odd            ;odd
+                    moveq   #512/4-1,d0
+    .oddcopy:       move.b  (a0)+,(a1)+                    
+                    move.b  (a0)+,(a1)+
+                    move.b  (a0)+,(a1)+
+                    move.b  (a0)+,(a1)+
+                    dbra    d0,.oddcopy
                 
 .return:        movem.l (a7)+,d3-d7/a3-a6
                 rts
