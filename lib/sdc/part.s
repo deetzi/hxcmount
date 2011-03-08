@@ -64,13 +64,18 @@ sdcPartEnter:
                     move.b  (a0)+,-(a2)
                     move.b  (a0)+,-(a2)
                     move.b  (a0)+,-(a2)
-                
+
                 ;a1:LBA start
                 ;a2:LBA length
 
-                lea     _sdcPartIsActivated(pc),a0
-                st      (a0)
-                
+                ;validate LBA sectors and length
+                    move.l  (a1),d0
+                    move.l  (a2),d1
+                    cmp.l   #$10000,d0                                      ;start>=$10000 ?
+                    bhs.s   .nombr
+                    cmp.l   #100,d1                                         ;length<=100 sectors (51 Ko) ?
+                    bls.s   .nombr
+
                 ;print success
                     lea     _sdcPartMsgSucc2(pc),a0
                     move.l  (a1),d0
@@ -86,21 +91,27 @@ sdcPartEnter:
                     addq.l  #4,a7
 
                 ;success
-                moveq   #0,d0
-
                 bra.s   .return
 
 .nombr:         ;print fail
-                    pea     _sdcPartMsgFail(pc)
-                    bsr.s   _sdcPartPrint
                     pea     _sdcPartMsgNoMbr(pc)
                     bsr.s   _sdcPartPrint2
+                    pea     _sdcPartMsgFail(pc)
+                    bsr.s   _sdcPartPrint2
                     addq.l  #8,a7
+ 
+                ;start=end=0                   
+                    lea     _sdcPartStart+4(pc),a1
+                    clr.l   (a1)+
+                    clr.l   (a1)+
                 
-                ;fail    
-                moveq   #-1,d0
-
+                ;fail : same code as SUCCESS (skipping)
 .return:
+                ;always success
+                    moveq   #0,d0
+                    lea     _sdcPartIsActivated(pc),a0
+                    st      (a0)
+
                 movem.l (a7)+,d1-d7/a0-a6
                 tst.w   d0
                 rts
@@ -179,22 +190,21 @@ sdcPartSectorGet:
 
 
 _sdcPartMsg00:      dc.b    "sdcPart: ",0
-_sdcPartMsgEntr:    dc.b    "Entering SDCard Partition layer... Searching partition... ",0
+_sdcPartMsgEntr:    dc.b    "Entering SDCard Partition layer... Searching partition table ... ",0
 _sdcPartMsgSucc0:   dc.b    "Success.",13,10,0
 _sdcPartMsgSucc:    dc.b    "Found partition at 0x"
 _sdcPartMsgSucc2:   dc.b    "00000000, length 0x"
 _sdcPartMsgSucc3:   dc.b    "00000000 sectors. ",0
-_sdcPartMsgFail:     dc.b   "FAILED: ",0
-_sdcPartMsgLeav:     dc.b   "Leaving SDCard Partition layer... ",0
-_sdcPartMsgNoMbr:    dc.b   "sector 0 is not a valid MBR",13,10,0
+_sdcPartMsgFail:    dc.b    "The SDCard root sector is not a partition table. Skipping this layer.",13,10,0
+_sdcPartMsgLeav:    dc.b    "Leaving SDCard Partition layer... ",0
+_sdcPartMsgNoMbr:   dc.b    "sector 0 is not a valid MBR: no partition table. ",0
         EVEN
 
         SECTION BSS
 _sdcPartIsActivated:
                 ds.b    1                                   ;is the driver activated ? 0:no -1:yes
                 EVEN
-_sdcPartBuffer:                                             ;Internal buffer
-                ds.b    8*512
+_sdcPartBuffer: ds.b    512                                 ;Internal buffer
 _sdcPartStart:  ds.l    1                                   ;LBA of the first absolute sector in the partition
 _sdcPartLen:    ds.l    1                                   ;Number of sectors in partition                
         SECTION TEXT

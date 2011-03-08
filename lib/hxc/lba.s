@@ -71,7 +71,7 @@ hxcLbaEnter:
                     move.w  #$88,d0                                             ;READ SECTOR, no spinup
                     bsr     fdcAccSendCommandWait
 
-                    bsr     fdcAccFloppyUnlock
+                bsr     fdcAccFloppyUnlock
 
                 ;verify if HxC Floppy Emulator is present
                     lea     _hxcLbaControlWrite(pc),a1
@@ -212,7 +212,7 @@ hxcLbaLeave:
                     moveq   #$03,d0                                             ;RESTORE, no verify, 3ms
                     bsr     fdcAccSendCommandWait
 
-                    bsr     fdcAccFloppyUnlock
+                bsr     fdcAccFloppyUnlock
 
                 lea _hxcLbaIsHardware(pc),a0
                 tst.b   (a0)
@@ -249,11 +249,6 @@ hxcLbaLeave:
 ;registers modified:a0-a2/d0-d2
 hxcLbaSectorGet:
                 movem.l d3-d7/a3-a6,-(a7)
-                
-                ;wait for the hardware to be ready, then claim the resource
-.waitSemaphore: lea     _hxcLbaIsHardware+1(pc),a0
-                tas     (a0)
-                bne.s   .waitSemaphore
                 
                 move.l  9*4+8(a7),d1                                            ;d1=asked sector
                 move.l  _hxcLbaCurrentSectorsNumber(pc),d0                      ;d0=currentSectorsNumber
@@ -323,17 +318,17 @@ hxcLbaSectorGet:
                     bsr     fdcAccDmaReadMode
                     moveq   #8,d0                                                   ;eight sectors to read in the DMA sector count
                     bsr     fdcAccSectorcountRegSet
-.read:              move.w  d1,d0                                                   ;sector number
+.readhard:          move.w  d1,d0                                                   ;sector number
                     bsr     fdcAccSectorRegSet
                     move.w  #$88,d0                                                 ;READ SECTOR, no spinup
                     bsr     fdcAccSendCommandWait
                     addq.w  #1,d1                                                   ;next
                     cmp.w   #9,d1
-                    bne.s   .read
+                    bne.s   .readhard
 
                 bsr     fdcAccFloppyUnlock
                 
-                bra.s   .readok
+                bra.s   .readdone
 
 
 
@@ -341,8 +336,7 @@ hxcLbaSectorGet:
 
 
             ;use file instead of hardware:
-.readSoftware:
-                ;d1=asked sector
+.readSoftware:  ;d1=asked sector
                     clr.w   -(a7)   ;mode=SEEK_SET
                     move.w  _hxcLbaDebugFileHandle(pc),-(a7)
                     lsl.l   #8,d1
@@ -358,8 +352,7 @@ hxcLbaSectorGet:
                     trap    #1
                     lea     12(a7),a7
 
-.readok:            
-                ;put the asked sector number in currentSectorsNumber
+.readdone:      ;put the asked sector number in currentSectorsNumber
                 lea     _hxcLbaCurrentSectorsNumber(pc),a0
                 ;   9*4+ 4(a7).L : address to read to
                 ;   9*4+ 8(a7).L : LBA sector number
@@ -419,11 +412,7 @@ hxcLbaSectorGet:
                     movem.l (a0)+,d0-d7/a2-a4           ; 44 bytes
                     movem.l d0-d7/a2-a4,468(a1)         ;512 bytes copied
                 
-.return:        ;free the hardware resource semaphore
-                    lea     _hxcLbaIsHardware+1(pc),a0
-                    sf     (a0)
-
-                movem.l (a7)+,d3-d7/a3-a6
+.return:        movem.l (a7)+,d3-d7/a3-a6
                 rts
 
 
@@ -489,7 +478,7 @@ hxcLbaWriteDirtySectors:
                     move.w  #$a8,d0                                                 ;***WRITE*** SECTOR, no spinup
                     bsr     fdcAccSendCommandWait
 
-.notdirtyH:         ;next sector: clear dirty flag
+.notdirtyH:     ;next sector: clear dirty flag
                     clr.b   (a1)+
                     lea     512(a0),a0
                     addq.w  #1,d1           ;next
@@ -552,18 +541,13 @@ hxcLbaWriteDirtySectors:
                 dc.l    "HCHD"
                 dc.l    0
 _hxcLbaVbl:     movem.l d0-d1/a0-a1,-(a7)
-                move.w  $466+2.w,d0         ;_frlock : vbl counter, not affected by vblsem
-                tst.b   d0
-                beq.s   .treate             ;one time every 256 vbl
-                cmp.b   #$80,d0
+                move.w  $466+2.w,d0                         ;_frlock : vbl counter, not affected by vblsem
+                and.b   #$7f,d0                             ;one time every 128 vbl
                 bne.s   .return
-                
-.treate:        lea     _hxcLbaIsHardware+1(pc),a0
-                tas     (a0)
-                bne.s   .return                             ;hardware not available:return
+
+                bsr     fdcAccFloppyIsLocked                ;don't perform anything if we're still doing something
+                bne.s   .return
                 bsr     hxcLbaWriteDirtySectors
-                lea     _hxcLbaIsHardware+1(pc),a0
-                sf      (a0)
                 
 .return:        movem.l (a7)+,d0-d1/a0-a1
                 move.l  _hxcLbaVbl-4(pc),-(a7)
@@ -593,8 +577,8 @@ _hxcLbaPrint2:  movem.l d0-d2/a0-a2,-(a7)
 _hxcLbaMsg00:       dc.b    "hxcLba: ",0
 _hxcLbaMsgEntr:     dc.b    "Entering HxC Floppy Emulator LBA driver... ",0
 _hxcLbaMsgSear:     dc.b    "searching for HxC Floppy Emulator hardware at A:... ",0
-_hxcLbaMsgFnd:      dc.b    "found.",0
-_hxcLbaMsgSearRev:  dc.b    "not found. Using file ",0
+_hxcLbaMsgFnd:      dc.b    "Found. ",0
+_hxcLbaMsgSearRev:  dc.b    "Not found. Using file ",0
 _hxcLbaMsgSearRev2: dc.b    " instead... ",0
 _hxcLbaMsgNotFnd:   dc.b    " file not found. Cannot proceed.",13,10,0
 _hxcLbaMsgSucc:     dc.b    "Success.",13,10,0
@@ -608,7 +592,6 @@ _hxcLbaDebugFileHandle: dc.w    0
         SECTION BSS
 _hxcLbaIsActivated:         ds.b    1                                   ;is the FDC in LBA Mode ? 0:no -1:yes
 _hxcLbaIsHardware:          ds.b    1                                   ;FF:HxcHardware, 00:file
-                            ds.b    1                                   ;semaphore. When set, an access is occuring, no other operation can be made
                 EVEN
 _hxcLbaSave:                ds.w    1                                   ;_nflops(4a6)
                             ds.w    1                                   ;_drvbits+2(4c2+2)

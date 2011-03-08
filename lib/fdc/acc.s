@@ -109,7 +109,7 @@ fdcAccLeave:
 
 ;Select DriveA, Side0
 fdcAccSelectDriveASide0:
-                movem.l  d0,-(sp)
+                move.w  d0,-(sp)
                 move.w  sr,-(sp)
                 or.w    #$700,sr
                 ;PSG set drive/side
@@ -119,12 +119,12 @@ fdcAccSelectDriveASide0:
                 or.b    #5,d0               ;%abc a:/driveb b:/drivea c:/side (5:driveA, side0)
                 move.b  d0,$ffff8802.w
                 move.w  (sp)+,sr
-                movem.l (sp)+,sp
+                move.w  (sp)+,d0
                 rts
 
 ;Unselect drives and sides
 fdcAccUnselect:
-                movem.l  d0,-(sp)
+                move.w  d0,-(sp)
                 move.w  sr,-(sp)
                 or.w    #$700,sr
                 ;PSG set drive/side
@@ -133,17 +133,34 @@ fdcAccUnselect:
                 or.b    #7,d0               ;%abc a:/driveb b:/drivea c:/side (5:driveA, side0)
                 move.b  d0,$ffff8802.w
                 move.w  (sp)+,sr
-                movem.l (sp)+,sp
+                move.w  (sp)+,d0
                 rts
 
 fdcAccFloppyLock:
-                tas     $43e.w
-                bne.s   fdcAccFloppyLock
-                rts
-fdcAccFloppyUnlock:
-                sf      $43e.w      ;flock
+                move.l  a0,-(a7)
+                ;wait for the hardware to be ready, then claim the resource
+                    lea     _fdcAccIsActivated+1(pc),a0
+.waitSemaphore:     tas     (a0)
+                    bne.s   .waitSemaphore
+                st      $43e.w  ;flock
+                move.l  (a7)+,a0
                 rts
 
+fdcAccFloppyUnlock:
+                move.l  a0,-(a7)
+                ;free the hardware resource semaphore
+                    lea     _fdcAccIsActivated+1(pc),a0
+                    sf     (a0)
+                sf      $43e.w      ;flock
+                move.l  (a7)+,a0
+                rts
+
+fdcAccFloppyIsLocked:   ;returns Z=0 if floppy locked, Z=1 otherwise
+                move.l  a0,-(a7)
+                lea     _fdcAccIsActivated+1(pc),a0
+                tst.b    (a0)
+                movem.l  (a7)+,a0   ; movem leaves CR
+                rts
 
 ;Ecrit d0 dans les registres FDC ou lit un registre dans d0
 ;entrée : d0.w si set
@@ -257,10 +274,10 @@ fdcAccDmaAdrGet:moveq   #0,d0
                 move.b  d0,$ffff860d.w      ;load address low
                 rts
 fdcAccIrqCountReset:
-                movem.l a0,-(sp)
+                move.l  a0,-(sp)
                 lea     _fdcAccIrqCounter(pc),a0
                 clr.w   (a0)
-                movem.l (sp)+,a0
+                move.l  (sp)+,a0
                 rts
 fdcAccSendCommandWait:
                 bsr.s   fdcAccIrqCountReset
@@ -287,11 +304,11 @@ _fdcAccIrq:     move.l  a0,-(a7)
 .xbraret:       move.l  (a7)+,a0
                 rte
 fdcAccIrqCountWait:
-                movem.l a0,-(sp)
+                move.l  a0,-(sp)
                 lea     _fdcAccIrqCounter(pc),a0
 .wait:          tst.w   (a0)
                 beq.s   .wait
-                movem.l (sp)+,a0
+                move.l  (sp)+,a0
                 rts
 fdcAccWait:     move.w  d1,-(sp)
                 move.w  #$80,d1
@@ -326,16 +343,14 @@ _fdcAccMsgLeav:     dc.b    "Leaving Floppy Controller Driver... ",0
 
 
         SECTION BSS
-_fdcAccIsActivated:
-                ds.b    1                                   ;is our IRQ installed ? 0:no -1:yes
-                EVEN
-_fdcAccSave:    ds.l    1                                   ;fdc interrupt ($11c)
-;                ds.w    1                                   ;flock ($43e)
-                ds.b    1                                   ;ierb ($fffa09)
-                ds.b    1                                   ;imrb ($fffa15)
-                EVEN
-_fdcAccIrqCounter:
-                ds.w    1                                   ;counter of fdc Irqs
-_fdcAccDmaMode:
-                ds.w    1                                   ;0 for read-mode. $100 for write-mode
+_fdcAccIsActivated: ds.b    1                                   ;is our IRQ installed ? 0:no -1:yes
+                    ds.b    1                                   ;semaphore. When set, an access is occuring, no other operation can be made
+
+                    EVEN
+_fdcAccSave:        ds.l    1                                   ;fdc interrupt ($11c)
+                    ds.b    1                                   ;ierb ($fffa09)
+                    ds.b    1                                   ;imrb ($fffa15)
+                    EVEN
+_fdcAccIrqCounter:  ds.w    1                                   ;counter of fdc Irqs
+_fdcAccDmaMode:     ds.w    1                                   ;0 for read-mode. $100 for write-mode
         SECTION TEXT

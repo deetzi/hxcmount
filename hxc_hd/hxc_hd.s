@@ -67,12 +67,12 @@ MAIN:
                 tst.b   (a0)
                 bne.s   .ishardware
                 
-.k              
-                pea     prgFname(pc)
-                move.w  #9,-(a7)
-                trap    #1
-                addq.l  #6,a7
-                bra.s  .k
+;.k              
+;                pea     prgFname(pc)
+;                move.w  #9,-(a7)
+;                trap    #1
+;                addq.l  #6,a7
+;                bra.s  .k
 
                 pea     env(pc)     ;environment
                 pea     env(pc)     ;cmdline
