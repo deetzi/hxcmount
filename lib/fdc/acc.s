@@ -23,27 +23,6 @@ fdcAccEnter:
                     bsr     _fdcAccPrint
                     addq.l  #4,a7
 
-                ;save
-                    lea     _fdcAccSave(pc),a0
-                    move.w  $11c.w,(a0)+
-;                    move.w  $43e.w,(a0)+                                        ;flock
-                    move.b  $fffffa09.w,d0
-                    moveq   #0,d1
-                    btst    #7,d0                   ;was enabled ?
-                    beq.s   .xbrasav                ;yes:old address no:0.l
-                    move.l  $11c.w,d0
-.xbrasav:           lea     _fdcAccIrq-4(pc),a1
-                    move.l  d1,(a1)
-                    move.b  d0,(a0)+
-                    move.b  $fffffa15.w,(a0)+
-                
-                ;install our IRQ
-                    lea     _fdcAccIrq(pc),a0
-                    move.l  a0,$11c.w
-                    bset    #7,$fffffa09.w
-                    bset    #7,$fffffa15.w
-;                    st      $43e.w                                              ;flock
-                
                 lea     _fdcAccIsActivated(pc),a1
                 st  (a1)
 
@@ -73,23 +52,6 @@ fdcAccLeave:
                     bsr     _fdcAccPrint
                     addq.l  #4,a7
 
-                ;restore
-                    lea     _fdcAccSave(pc),a0
-                    move.w  (a0)+,$11c.w                                        ;irq
-;                    move.w  (a0)+,$43e.w                                        ;flock
-                    move.b  (a0)+,d0                                            ;ierb
-                    and.b   #$80,d0
-                    move.b  $fffffa09.w,d1
-                    and.b   #$7f,d1
-                    or.b    d0,d1
-                    move.b  d1,$fffffa09.w
-                    move.b  (a0)+,d0                                            ;imrb
-                    and.b   #$80,d0
-                    move.b  $fffffa15.w,d1
-                    and.b   #$7f,d1
-                    or.b    d0,d1
-                    move.b  d1,$fffffa15.w
-                    
                 sf  (a1)
 
                 ;print message
@@ -126,13 +88,13 @@ fdcAccSelectDriveASide0:
 fdcAccUnselect:
                 move.w  d0,-(sp)
                 move.w  sr,-(sp)
-                or.w    #$700,sr
+                or.w    #$700,sr            ;GO TO IPL7
                 ;PSG set drive/side
                 move.b  #14,$ffff8800.w     ;select register 14
                 move.b  $ffff8800.w,d0      ;read register 14
                 or.b    #7,d0               ;%abc a:/driveb b:/drivea c:/side (5:driveA, side0)
                 move.b  d0,$ffff8802.w
-                move.w  (sp)+,sr
+                move.w  (sp)+,sr            ;restore IPL
                 move.w  (sp)+,d0
                 rts
 
@@ -273,43 +235,12 @@ fdcAccDmaAdrGet:moveq   #0,d0
                 lsr.w   #8,d0
                 move.b  d0,$ffff860d.w      ;load address low
                 rts
-fdcAccIrqCountReset:
-                move.l  a0,-(sp)
-                lea     _fdcAccIrqCounter(pc),a0
-                clr.w   (a0)
-                move.l  (sp)+,a0
-                rts
 fdcAccSendCommandWait:
-                bsr.s   fdcAccIrqCountReset
                 bsr     fdcAccControlRegSet
-                bsr.s   fdcAccIrqCountWait
+.wait:          btst    #5,$fffffa01.w
+                bne.s   .wait
                 rts
-                dc.l    "XBRA"
-                dc.l    "HXHD"
-                dc.l    0
-_fdcAccIrq:     move.l  a0,-(a7)
-                lea     _fdcAccIrqCounter(pc),a0
-                addq.w  #1,(a0)
-                bclr    #7,$fffffa11.w
-                lea     _fdcAccIrq-4(pc),a0
-                tst.l   (a0)
-                beq.s   .xbraret
-                ;xbra
-                lea     .xbraret(pc),a0
-                move.l  a0,-(a7)        ;stack return address
-                move.w  sr,-(a7)
-                move.l   _fdcAccIrq-4(pc),a0
-                jmp     (a0)
-                ;xbra returns here
-.xbraret:       move.l  (a7)+,a0
-                rte
-fdcAccIrqCountWait:
-                move.l  a0,-(sp)
-                lea     _fdcAccIrqCounter(pc),a0
-.wait:          tst.w   (a0)
-                beq.s   .wait
-                move.l  (sp)+,a0
-                rts
+
 fdcAccWait:     move.w  d1,-(sp)
                 move.w  #$80,d1
                 move.w  d1,$ffff8606.w
@@ -346,10 +277,6 @@ _fdcAccMsgLeav:     dc.b    "Leaving Floppy Controller Driver... ",0
 _fdcAccIsActivated: ds.b    1                                   ;is our IRQ installed ? 0:no -1:yes
                     ds.b    1                                   ;semaphore. When set, an access is occuring, no other operation can be made
 
-                    EVEN
-_fdcAccSave:        ds.l    1                                   ;fdc interrupt ($11c)
-                    ds.b    1                                   ;ierb ($fffa09)
-                    ds.b    1                                   ;imrb ($fffa15)
                     EVEN
 _fdcAccIrqCounter:  ds.w    1                                   ;counter of fdc Irqs
 _fdcAccDmaMode:     ds.w    1                                   ;0 for read-mode. $100 for write-mode
