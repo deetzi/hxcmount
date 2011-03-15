@@ -101,7 +101,7 @@ fontClearScreen:
 
 ;4(sp):line to print
 fontPrintStd:   move.l  4(a7),-(a7)
-                move.l  fonteStd(pc),-(a7)
+                pea     fonteStd(pc)
                 pea     boxinfo(pc)
                 bsr     draw_line_bitplane_noclip
                 lea     12(a7),a7
@@ -117,6 +117,24 @@ fontPrintCust:  move.l  4(sp),-(sp)
                 rts
 
 
+;a0: boxinfo
+;d0: 4 chars to print 
+;fontPrint4D0Ascii:
+;                movem.l d0-d7/a0-a6,-(a7)
+;
+;                lea     .tmpspace(pc),a0
+;
+;                move.l  d0,(a0)                            
+;
+;                pea     (a0)
+;                pea     fonteStd(pc)
+;                pea     boxinfo(pc)
+;                bsr     draw_line_bitplane_noclip
+;                lea     12(a7),a7
+;                
+;                movem.l (a7)+,d0-d7/a0-a6
+;                rts
+;.tmpspace:      ds.b    6
 
 
 

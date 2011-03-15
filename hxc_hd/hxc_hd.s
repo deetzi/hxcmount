@@ -16,12 +16,10 @@
 
 
 
-BUILD_TYPE      equ     1       ;0:release, 1:debug
+BUILD_TYPE      equ     0       ;0:release, 1:debug
 PROTECTSTACK    equ     0       ;protect against stack overflow. Not needed. If set, rwabs won't be re-entrant.
+ZEUS_BRA        equ     1       ;use bra instead of jump in startup
 SP_LENGHT       equ     2048
-
-
-
 
 
         IFNE    BUILD_TYPE=1
@@ -44,13 +42,24 @@ SP_LENGHT       equ     2048
 
 MAIN:
                 bsr     fontInit
+
+                ;print welcome message
+                    pea     WelcomeMsg1(pc)
+                    bsr     fontPrintStd
+;                    move.l  #MAIN_VERSION1,d0
+;                    bsr     fontPrint4D0Ascii
+;                    move.l  #MAIN_VERSION2,d0
+;                    bsr     fontPrint4D0Ascii
+;                    pea     WelcomeMsg2(pc)
+;                    bsr     fontPrint
+;                    addq.l  #8,a7
         
                 pea     SUPER(pc)
                 move.w  #$26,-(a7)
                 trap    #14
                 addq.l  #6,a7
         
-                move.l  fonteStdBold(pc),-(a7)
+                pea     fonteStdBold(pc)
                 pea     pushAnyKey(pc)
                 bsr     fontPrintCust
                 addq.l  #8,a7
@@ -132,7 +141,7 @@ initLayers: movem.l d1-d7/a0-a6,-(a7)
 .err:       dc.b    "Failed at initializing.",10,0
             even
 
-.errshow:   move.l  fonteStdBold(pc),-(a7)
+.errshow:   pea     fonteStdBold(pc)
             pea     .err(pc)
             bsr     fontPrintCust
             addq.l  #8,a7
@@ -227,7 +236,7 @@ mainPrg:
                     bsr     longD0ToHexA0
 
                 ;print success message                
-                    move.l  fonteStdBold(pc),-(a7)
+                    pea     fonteStdBold(pc)
                     pea     SuccessMsg(pc)
                     bsr     fontPrintCust
                     addq.l  #8,a7
@@ -307,12 +316,8 @@ my_rw:          CARGS   rwSpMode.w,rwSpBuf.l,rwSpCount.w,rwSpRecno.w,rwSpDev.w,r
                 addq.l  #1,d0
 .readN:         dbra    d1,.read1
 
-                ;success
-                moveq   #0,d0
-                IFNE    PROTECTSTACK
-                    move.l  savestack,a7
-                ENDC
-                rts
+                bra.s   .success
+
 
     .write1:    ;write d1 sectors
                 movem.l d0-d1/a0,-(a7)
@@ -326,7 +331,7 @@ my_rw:          CARGS   rwSpMode.w,rwSpBuf.l,rwSpCount.w,rwSpRecno.w,rwSpDev.w,r
                 addq.l  #1,d0
 .writeN:        dbra    d1,.write1
 
-                ;success
+.success:       ;success
                 moveq   #0,d0
                 IFNE    PROTECTSTACK
                     move.l  savestack,a7
@@ -344,7 +349,7 @@ my_rw:          CARGS   rwSpMode.w,rwSpBuf.l,rwSpCount.w,rwSpRecno.w,rwSpDev.w,r
 
 
 mainPrgFail: 
-                move.l  fonteStdBold(pc),-(a7)
+                pea     fonteStdBold(pc)
                 pea     FailMsg(pc)
                 bsr     fontPrintCust
                 addq.l  #8,a7
@@ -352,7 +357,14 @@ mainPrgFail:
                 rts
 
         SECTION DATA
-
+WelcomeMsg1:    dc.b    "Welcome to HXC_HD. This program allows you to mount a hard disk image file on your Atari ST. "
+                dc.b    "It needs a HxC Floppy Emulator SDCard by Jean-Francois Del Nero "
+                dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
+                dc.b    "Driver software by G.Bouthenot.",13,10
+                dc.b    "Software version : V0.1 alpha 2"
+                dc.b    " (PREVIEW VERSION). Not suitable for production !",13,10,13,10
+                dc.b    "The SDCard must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"
+                dc.b    " with a Atari-compliant file system. (usually FAT-16).",13,10,13,10,0
 SuccessMsg:     dc.b    "Success. New drive mounted as "
 SuccessMsgLtr:  dc.b    "X:, data size=0x"
 SuccessMsgSize: dc.b    "00000000 bytes.",13,10,0
@@ -361,12 +373,14 @@ isSuccess:      ds.b    1
         EVEN
         
         
+fonteStd:
 _FONTESTD:      incbin  "..\libext\rasteriz\fonts\tahoma13.iff"
                 EVEN
+fonteStdBold:
 _FONTESTDBOLD   incbin  "..\libext\rasteriz\fonts\taho13b.iff"
                 EVEN
-fonteStd:       dc.l    _FONTESTD
-fonteStdBold:   dc.l    _FONTESTDBOLD
+
+
 
 
         

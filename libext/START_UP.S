@@ -11,6 +11,7 @@
 ;     256 bytes are always add to SP_LENGHT
 ;1.4b:Now standart message contains my email adr.
 ;1.4c:2011-03-01: corrected typos, new address&email. Removed telephone/minitel.
+;1.5: 2011-03-15: removed name&address, added ZEUS_USEBRA
 
 ;MSG_TEXT	equ 	0: no message
 ;MSG_TEXT	equ	1: standard message
@@ -27,12 +28,6 @@
  IFNE	(MSG_TEXT=1)+(MSG_TEXT=3)
  	dc.b	"     Megar      "
  	dc.b	" To contact me: "
- 	dc.b	"----------------"
- 	dc.b	"BOUTHENOT Gilles"
- 	dc.b	"  9 rue des Pins"
- 	dc.b	"      25320     "
- 	dc.b	"   MONTFERRAND  "
- 	dc.b	"     FRANCE     "
  	dc.b	"----------------"
 	dc.b	"  gb@atomas.com "
  	dc.b	"----------------"
@@ -86,7 +81,11 @@ ___ZEU_STARTUP:
 	trap	#1
 	lea.l	12(sp),sp
 
+ IFD ZEUS_BRA
+	bra MAIN
+ ELSE
 	jmp	MAIN
+ ENDC
 
 BASEPAGE_ADR:
 	ds.l	1

@@ -15,7 +15,8 @@
 ;output : d0=0/Z=1 ok, else nok
 sdcPartEnter:
                 movem.l d1-d7/a0-a6,-(a7)
-                tst.b   _sdcPartIsActivated
+                lea     _sdcPartIsActivated(pc),a0
+                tst.b   (a0)
                 bne     .return
 
                 ;print message
@@ -124,7 +125,8 @@ sdcPartEnter:
 
 sdcPartLeave:
                 movem.l d0-d7/a0-a6,-(a7)
-                tst.b   _sdcPartIsActivated
+                lea     _sdcPartIsActivated(pc),a0
+                tst.b   (a0)
                 beq.s   .return
 
                 ;print message

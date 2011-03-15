@@ -105,6 +105,11 @@ fdcAccFloppyLock:
 .waitSemaphore:     tas     (a0)
                     bne.s   .waitSemaphore
                 st      $43e.w  ;flock
+                
+                ;select Drive A, Side 0
+                    bsr     fdcAccWait
+                    bsr.s   fdcAccSelectDriveASide0
+
                 move.l  (a7)+,a0
                 rts
 

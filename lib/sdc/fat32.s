@@ -16,7 +16,8 @@
 ;output : d0=0/Z=1 ok, else nok
 sdcFat32Enter:
                 movem.l d1-d7/a0-a6,-(a7)
-                tst.b   _sdcFat32IsActivated
+                lea     _sdcFat32IsActivated(pc),a0
+                tst.b   (a0)
                 bne     .return
 
                 ;print message
@@ -227,7 +228,8 @@ sdcFat32Enter:
 
 sdcFat32Leave:
                 movem.l d0-d7/a0-a6,-(a7)
-                tst.b   _sdcFat32IsActivated
+                lea     _sdcFat32IsActivated(pc),a0
+                tst.b   (a0)
                 beq.s   .return
 
                 ;print message
@@ -515,7 +517,7 @@ sdcFat32IsContigous:
 _sdcFat32GetNextCluster:
                 movem.l d1-d2/a1,-(a7)
                 ;128 FAT entries by sector
-                    move.l  _sdcFat32FatSector,d1       ;d1:First sector number of the FAT
+                    move.l  _sdcFat32FatSector(pc),d1   ;d1:First sector number of the FAT
                     move.l  d0,d2
                     lsr.l   #7,d2
                     add.l   d2,d1                       ;d1:sector of the asked fat entry

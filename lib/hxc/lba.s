@@ -15,7 +15,8 @@
 ;output : d0=0/Z=1 ok, else nok
 hxcLbaEnter:
                 movem.l d1-d7/a0-a6,-(a7)
-                tst.b   _hxcLbaIsActivated
+                lea     _hxcLbaIsActivated(pc),a0
+                tst.b   (a0)
                 bne     .return
 
                 ;print message
@@ -48,10 +49,7 @@ hxcLbaEnter:
                     bsr     _hxcLbaPrint2
                     addq.l  #4,a7
 
-                ;select Drive A, Side 0
-                    bsr     fdcAccFloppyLock
-                    bsr     fdcAccWait
-                    bsr     fdcAccSelectDriveASide0
+                bsr     fdcAccFloppyLock
 
                 ;seek to track 255
                     move.w  #255,d0                                             ;track number
@@ -118,7 +116,8 @@ hxcLbaEnter:
                     addq.l  #8,a7
                     tst.w   d0
                     bmi.s   .filenotfound
-                    move.w  d0,_hxcLbaDebugFileHandle
+                    lea     _hxcLbaDebugFileHandle(pc),a0
+                    move.w  d0,(a0)
 
                 ;file found
                 ;print message
@@ -132,10 +131,14 @@ hxcLbaEnter:
                 
                 
 .success:
-                ;set current sector to -$80
+                ;set current sector to -$80 and currentSectorsStatus to empty
                     moveq   #-$80,d0
                     lea     _hxcLbaCurrentSectorsNumber(pc),a0
                     move.l  d0,(a0)
+                    moveq   #0,d0
+                    lea     _hxcLbaCurrentSectorsStatus(pc),a0
+                    move.l  d0,(a0)+
+                    move.l  d0,(a0)+
 
                 ;install our VBL
                     lea     _hxcLbaVbl(pc),a0
@@ -181,13 +184,16 @@ hxcLbaEnter:
 ;Re-enable floppies
 hxcLbaLeave:
                 movem.l d0-d7/a0-a6,-(a7)
-                tst.b   _hxcLbaIsActivated
+                lea     _hxcLbaIsActivated(pc),a0
+                tst.b   (a0)
                 beq.s   .return
 
                 ;print message
                     pea     _hxcLbaMsgLeav(pc)
                     bsr     _hxcLbaPrint
                     addq.l  #4,a7
+
+                bsr     fdcAccFloppyLock
 
                 ;write dirty sectors, if any, otherwise, write will be lost
                     bsr     hxcLbaWriteDirtySectors
@@ -203,11 +209,6 @@ hxcLbaLeave:
                     and.w   #3,d0                                               ;only drive a&b
                     or.w    d0,$4c2+2.w                                         ;(_drvbits+2)
                     
-                ;select Drive A, Side 0
-                    bsr     fdcAccFloppyLock
-                    bsr     fdcAccWait
-                    bsr     fdcAccSelectDriveASide0
-
                 ;seek to track 0 (restore)
                     moveq   #$03,d0                                             ;RESTORE, no verify, 3ms
                     bsr     fdcAccSendCommandWait
@@ -250,127 +251,72 @@ hxcLbaLeave:
 hxcLbaSectorGet:
                 movem.l d3-d7/a3-a6,-(a7)
                 
+                bsr     fdcAccFloppyLock
                 move.l  9*4+8(a7),d1                                            ;d1=asked sector
                 move.l  _hxcLbaCurrentSectorsNumber(pc),d0                      ;d0=currentSectorsNumber
                 sub.l   d0,d1                                                   ;d1=asked-current=number in currentSectors
-                bcs.s   .miss
+                bcs.s   .cacheOut                               ;if < 0 : out of cache
                 cmp.l   #8,d1
-                blt     .hit
+                bge.s   .cacheOut                               ;if >=8 : out of cache
 
-.miss:          
+                ;asked sector is in the cache segment [0;7]. HxC LBA start=sector 0 of the cache segment
+                ;d0=currentSectorsNumber
+                ;d1=number of the sector in the segment [0;7]
+
+                ;check sector status. Can be empty(0), read(80) or dirty(FF)                
+                    lea     _hxcLbaCurrentSectorsStatus(pc),a0
+                    tst.b   0(a0,d1.w)
+                    bne.s   .hit                                ;read or dirty : **HIT**
+                
+                ;sector status=empty.
+                ;Read ? Sector must be read in the cache. Tag "read". Then goto HIT (get data from the cache, tag OK)
+                ;Write ? Then Goto HIT (fill the cache, tag "dirty")
+                
+                tst.w   9*4+12(a7)  ;read=0 or write ?
+                bne.s   .hit
+
+                ;read one sector in the cache
+                                                                    ;d1=number of sector in the currentSectors [0;7]
+                    moveq   #-1,d2                                  ;d2=LBA base -1 = no change
+                    moveq   #1,d3                                   ;d3=1 sector to read
+                    moveq   #0,d4                                   ;d4=0 read
+                    bsr     _hxcLbaCacheSectors
+                
+                bra.s   .hit
+
+
+.cacheOut:          
                 ;-----------------------------------------------------------
                 ;the asked sector is not in [sectorBase;sectorBase+7] : MISS
                 ;-----------------------------------------------------------
 
                 bsr hxcLbaWriteDirtySectors
-                    
-                ;dirty sectors written. We can know read another sectors.
-                ;   9*4+ 4(a7).L : address to read to
-                ;   9*4+ 8(a7).L : LBA sector number
-                ;   9*4+12(a7).W : 0 for read, 1 for write
-
-                move.l  9*4+8(a7),d1                                            ;d1=asked sector
-                ;d1=asked sector
                 
-                ;is hardware or file ?
-                    lea     _hxcLbaIsHardware(pc),a0
-                    tst.b   (a0)
-                    beq.s   .readSoftware
-
-
-.readHardware:  ;real hardware:
-                ;d1=asked sector
-
-            ;todo: "backward reading": if the asked sector = current sector base-1, move the sectors 1-7 to 2-8 and read only one sector at sector 1
-
-                ;select Drive A, Side 0
-                    bsr     fdcAccFloppyLock
-                    bsr     fdcAccWait
-                    bsr     fdcAccSelectDriveASide0
-
-                ;fill desired sector to fetch into the control sector
-                    lea     _hxcLbaControlWrite+9(pc),a0
-                    move.b  d1,(a0)+                            ;LBA[7..0]
-                    ror.w   #8,d1
-                    move.b  d1,(a0)+                            ;LBA[15..8]
-                    swap    d1
-                    move.b  d1,(a0)+                            ;LBA[23..16]
-                    ror.w   #8,d1
-                    move.b  d1,(a0)+                            ;LBA[31..24]
-
-                ;write the control sector
-                    lea     _hxcLbaControlWrite(pc),a0
-                    move.l  a0,d0
-                    bsr     fdcAccDmaAdrSet
-                    bsr     fdcAccDmaWriteMode
-                    moveq   #1,d0                                                   ;one sector in the DMA sector count
-                    bsr     fdcAccSectorcountRegSet
-                    moveq   #0,d0                                                   ;sector 0
-                    bsr     fdcAccSectorRegSet
-                    move.w  #$a8,d0                                                 ;***WRITE*** SECTOR, no spinup
-                    bsr     fdcAccSendCommandWait
-
-                ;read all 8 sectors into currentSectors
-                    moveq   #1,d1                                               ;start at sector 1
-                    lea     _hxcLbaCurrentSectorsBuffer(pc),a0
-                    move.l  a0,d0
-                    bsr     fdcAccDmaAdrSet
-                    bsr     fdcAccDmaReadMode
-                    moveq   #8,d0                                                   ;eight sectors to read in the DMA sector count
-                    bsr     fdcAccSectorcountRegSet
-.readhard:          move.w  d1,d0                                                   ;sector number
-                    bsr     fdcAccSectorRegSet
-                    move.w  #$88,d0                                                 ;READ SECTOR, no spinup
-                    bsr     fdcAccSendCommandWait
-                    addq.w  #1,d1                                                   ;next
-                    cmp.w   #9,d1
-                    bne.s   .readhard
-
-                bsr     fdcAccFloppyUnlock
-                
-                bra.s   .readdone
-
-
-
-
-
-
-            ;use file instead of hardware:
-.readSoftware:  ;d1=asked sector
-                    clr.w   -(a7)   ;mode=SEEK_SET
-                    move.w  _hxcLbaDebugFileHandle(pc),-(a7)
-                    lsl.l   #8,d1
-                    add.l   d1,d1
-                    move.l  d1,-(a7)    ;offset
-                    move.w  #$42,-(a7)  ;Fseek
-                    trap    #1
-                    lea     10(a7),a7
-                    pea     _hxcLbaCurrentSectorsBuffer(pc)
-                    move.l  #8*512,-(a7)    ;read 8 sectors
-                    move.w  _hxcLbaDebugFileHandle(pc),-(a7)
-                    move.w  #$3f,-(a7)  ;Fread
-                    trap    #1
-                    lea     12(a7),a7
-
-.readdone:      ;put the asked sector number in currentSectorsNumber
-                lea     _hxcLbaCurrentSectorsNumber(pc),a0
-                ;   9*4+ 4(a7).L : address to read to
-                ;   9*4+ 8(a7).L : LBA sector number
-                ;   9*4+12(a7).W : 0 for read, 1 for write
-
-                move.l  9*4+8(a7),(a0)                                             ;d1=asked sector
-                
-                ;clear currentSectorsStatus
+                ;clear hxcLbaCurrentSectorsStatus to "0" (empty)
                     lea     _hxcLbaCurrentSectorsStatus(pc),a0
-                    moveq   #0,d1                                                   ;d1=number of the sector in currentSectors
-                    move.l  d1,(a0)+
-                    move.l  d1,(a0)+
-                ;d1=0: the asked sector is the first in the cache
+                    clr.l   (a0)+
+                    clr.l   (a0)+
+                    
+                ;dirty sectors written. We can know read 8 sectors into the cache, then returns the first one _or_ just copy the sector to the cache and return it
+                ;   9*4+ 4(a7).L : address to read to
+                ;   9*4+ 8(a7).L : LBA sector number
+                ;   9*4+12(a7).W : 0 for read, 1 for write
+
+                moveq   #0,d1                                                   ;d1=sector number [0-7]
+                move.l  9*4+8(a7),d2                                            ;d2=asked sector
+                bsr     _hxcLbaBaseChange
+                move.w  9*4+12(a7),d4                                           ;d4:0 for read
+                bne.s   .readdone                                               ;if write, goto readdone (will actually write one to cache)
+                ;read:
+                moveq   #8,d3                                                   ;d3=read 8 sectors
+                bsr     _hxcLbaCacheSectors
+
+
+.readdone:      moveq   #0,d1                                                   ;d1=sector number [0-7]=0
+
                 ;proceed to HIT.
 
-
-.hit:
-                ;--------------------------------------------------------
+.hit:           ;--------------------------------------------------------
                 ;the asked sector *is* in [sectorBase;sectorBase+7] : HIT
                 ;--------------------------------------------------------
                 ;d1=number of the sector in currentSectors [0-7]
@@ -430,7 +376,8 @@ hxcLbaSectorGet:
                     move.b  (a0)+,(a1)+
                     dbra    d0,.oddcopy
                 
-.return:        movem.l (a7)+,d3-d7/a3-a6
+.return:        bsr     fdcAccFloppyUnlock
+                movem.l (a7)+,d3-d7/a3-a6
                 rts
 
 
@@ -439,7 +386,140 @@ hxcLbaSectorGet:
 
 
 
+_hxcLbaCacheSectors:
+; read sectors from the floppy to the cache OR write sectors from the cache to the floppy
+; clears sectorsStatus to OK in both cases.
+;d1.w: start sector [0;7] (will read/write sector 1 to 8)
+;d2.l: LBA base sector (-1.L : no change)
+;d3.w: nb sectors to read/write [1;8]
+;d4.w: read(0) or write
+;modifies d0,d2,d3,d5,a0,a1,a2
 
+                bsr     _hxcLbaBaseChange
+
+                move.w  d1,d5
+                ext.l   d5
+                lea     _hxcLbaIsHardware(pc),a0
+                tst.b   (a0)
+                bne.s   _hxcLbaCacheHardware
+
+_hxcLbaCacheSoftware:
+;d5.w: start sector [0;7] (will read/write sector 1 to 8)
+;d2.l: LBA base sector (-1.L : no change)
+;d3.w: nb sectors to read/write [1;8]
+;d4.w: read(0) or write
+;modifies d0,d2,d3,d5,a0,a1,a2
+
+                add.l   d5,d2                                                   ;d2=absolute number of the sector
+
+                ;seek
+                    clr.w   -(a7)   ;mode=SEEK_SET
+                    move.w  _hxcLbaDebugFileHandle(pc),-(a7)
+                    lsl.l   #8,d2
+                    add.l   d2,d2
+                    move.l  d2,-(a7)    ;offset
+                    move.w  #$42,-(a7)  ;Fseek
+                    trap    #1
+                    lea     10(a7),a7
+
+                ;compute cache address
+                    lea     _hxcLbaCurrentSectorsBuffer(pc),a0
+                    move.w  d5,d2                                           ;d2=currentSector number [0-7]
+                    add.w   d2,d2
+                    lsl.w   #8,d2                               ;*512       ;d2=byte offset in currentSectors
+                    lea     0(a0,d2.w),a0                                   ;a0=addr for the asked sector
+
+                ;compute currentSectorsStatus address
+                    lea     _hxcLbaCurrentSectorsStatus(pc),a1
+                    lea     0(a1,d5.w),a1                                       ;a1=addr of the first sector status
+
+                subq.w  #1,d3                                                   ;for dbra
+.readwritenxt:  ;read/write
+                    movem.l a0/a1,-(a7)
+                    pea     (a0)
+                    pea     512.w
+                    move.w  _hxcLbaDebugFileHandle(pc),-(a7)
+                    tst.w   d4
+                    bne.s   .write
+                    ;read:
+                    move.w  #$3f,-(a7)  ;Fread
+                    trap    #1
+                    lea     12(a7),a7
+                    movem.l (a7)+,a0/a1
+                    move.b  #$80,(a1)+                                          ;sector is OK
+                    add.w   #512,a0
+                    dbra    d3,.readwritenxt
+
+                    bra.s   .return
+
+.write:             move.w  #$40,-(a7)  ;Fwrite
+                    trap    #1
+                    lea     12(a7),a7
+                    movem.l (a7)+,a0/a1
+                    move.b  #$80,(a1)+                                          ;sector is OK
+                    add.w   #512,a0
+                    dbra    d3,.readwritenxt
+
+.return:            
+                rts
+
+
+
+_hxcLbaCacheHardware:
+;d2.l: LBA base sector (-1.L : no change)
+;d3.w: nb sectors to read/write [1;8]
+;d4.w: read(0) or write
+;d5.w: start sector [0;7] (will read/write sector 1 to 8)
+;modifies d0,d2,d3,d5,a0,a1
+
+                ;compute currentSectorsStatus address
+                    lea     _hxcLbaCurrentSectorsStatus(pc),a1
+                    lea     0(a1,d5.w),a1                                       ;a1=addr of the first sector status
+
+                ;compute DMA address
+                    lea     _hxcLbaCurrentSectorsBuffer(pc),a0
+                    move.w  d5,d2                                           ;d2=currentSector number [0-7]
+                    add.w   d2,d2
+                    lsl.w   #8,d2                               ;512        ;d2=byte offset in currentSectors
+                    lea     0(a0,d2.w),a0                                   ;a0=addr for the asked sector
+
+                ;set DMA address
+                    move.l  a0,d0
+                    bsr     fdcAccDmaAdrSet
+                    
+                tst.w   d4
+                bne.s   .write
+                
+                ;read
+                bsr     fdcAccDmaReadMode
+                move.w  d3,d0                                               ;nb sectors to process by DMA
+                bsr     fdcAccSectorcountRegSet
+                subq.w  #1,d3                                               ;sector to read-1 (for dbra)
+.readnxt:       addq.w  #1,d5                                               ;sector number starts at 1
+                move.w  d5,d0                                               ;sector number
+                bsr     fdcAccSectorRegSet
+                move.w  #$88,d0                                             ;READ SECTOR, no spinup
+                bsr     fdcAccSendCommandWait
+                move.b  #$80,(a1)+                                          ;sector is read
+                dbra    d3,.readnxt
+
+                bra.s   .return
+
+                
+.write:         ;write
+                bsr     fdcAccDmaWriteMode
+                move.w  d3,d0                                               ;nb sectors to process by DMA
+                bsr     fdcAccSectorcountRegSet
+                subq.w  #1,d3                                               ;sector to read-1 (for dbra)
+.writenxt:      addq.w  #1,d5                                               ;sector number starts at 1
+                move.w  d5,d0                                               ;sector number
+                bsr     fdcAccSectorRegSet
+                move.w  #$A8,d0                                             ;***WRITE*** SECTOR, no spinup
+                bsr     fdcAccSendCommandWait
+                move.b  #$80,(a1)+                                          ;sector is read
+                dbra    d3,.writenxt
+
+.return:        rts
 
 
 
@@ -449,95 +529,71 @@ hxcLbaSectorGet:
 
 ;input: -
 ;output: -
-;registers: d0-d1/a0-a1
+;registers: d0-d2/a0-a2
 hxcLbaWriteDirtySectors:
-                ;check dirty status
-                    lea     _hxcLbaCurrentSectorsStatus(pc),a1
-                    move.l  (a1),d0
-                    or.l    4(a1),d0
-                    bne.s   .hasDirtySectors
+                movem.l d3-d5/a3,-(a7)
+                lea     _hxcLbaCurrentSectorsStatus(pc),a3
 
-                rts                    
-
-.hasDirtySectors:
-                ;there are some dirty sectors. We must write them before reading others sector on top.
-                ;test all 8 sectors and write them if necessary
-
-                ;is hardware or file ?
-                    lea     _hxcLbaIsHardware(pc),a0
-                    tst.b   (a0)
-                    beq.s   .dirtySoftware
-
-
-
-
-
-.dirtyHardware: 
-                ;select Drive A, Side 0
-                    bsr     fdcAccFloppyLock
-                    bsr     fdcAccWait
-                    bsr     fdcAccSelectDriveASide0
-
-                lea     _hxcLbaCurrentSectorsBuffer(pc),a0
-                ;a0:_hxcLbaCurrentSectorsBuffer
-                ;a1:_hxcLbaCurrentSectorsStatus (modified)
-
-                moveq   #1,d1           ;start at sector 1
-.nextDirtyH:        tst.b   (a1)           ;is the current sector dirty ?
-                    beq.s   .notdirtyH
+                moveq   #0,d1                                                   ;start at sector 0
+.nextDirty:         cmp.b   #$ff,(a3)                                           ;is the current sector dirty ?
+                    bne.s   .notdirty
                     
+                    move.l  _hxcLbaCurrentSectorsNumber(pc),d2                  ;LBA base
+                    moveq   #1,d3                                               ;1 sector
+                    moveq   #1,d4                                               ;write
+                    bsr     _hxcLbaCacheSectors
+                    
+                    move.b  #$80,(a3)                                           ;tag sector "OK"
+.notdirty:     ;next sector:
+                    addq.l  #1,a3
+                    addq.w  #1,d1                                               ;next
+                    cmp.w   #8,d1
+                    bne.s   .nextDirty
+
+                movem.l (a7)+,d3-d5/a3
+                rts
+
+
+
+
+;d2.l:  new LBA sector base; -1: no change
+;registers: -
+_hxcLbaBaseChange:
+                movem.l d0/a0-a1,-(a7)
+
+                cmp.l   #-1,d2
+                beq.s   .return
+                lea     _hxcLbaCurrentSectorsNumber(pc),a0
+                cmp.l   (a0),d2
+                beq.s   .return
+                
+                ;write the new LBA base
+                move.l  d2,(a0)+
+
+                lea     _hxcLbaIsHardware(pc),a1
+                tst.b   (a1)
+                beq.s   .return                                                 ;if software, just returns
+                
+                ;fill desired sector to fetch into the control sector
+                    lea     _hxcLbaControlWrite+9(pc),a1
+                    move.b  -(a0),(a1)+                            ;LBA[7..0]
+                    move.b  -(a0),(a1)+                            ;LBA[15..8]
+                    move.b  -(a0),(a1)+                            ;LBA[23..16]
+                    move.b  -(a0),(a1)+                            ;LBA[31..24]
+
+                ;write the control sector
+                    lea     _hxcLbaControlWrite(pc),a0
                     move.l  a0,d0
                     bsr     fdcAccDmaAdrSet
                     bsr     fdcAccDmaWriteMode
-                    moveq   #1,d0                                                   ;1 sectors to write in the DMA sector count
+                    moveq   #1,d0                                                   ;one sector in the DMA sector count
                     bsr     fdcAccSectorcountRegSet
-                    move.w  d1,d0                                                   ;sector number
+                    moveq   #0,d0                                                   ;sector 0
                     bsr     fdcAccSectorRegSet
-                    move.w  #$a8,d0                                                 ;***WRITE*** SECTOR, no spinup
+                    move.w  #$A8,d0                                                 ;***WRITE*** SECTOR, no spinup
                     bsr     fdcAccSendCommandWait
-
-.notdirtyH:     ;next sector: clear dirty flag
-                    clr.b   (a1)+
-                    lea     512(a0),a0
-                    addq.w  #1,d1           ;next
-                    cmp.w   #9,d1
-                    bne.s   .nextDirtyH
-
-                bsr     fdcAccFloppyUnlock
-
-                rts
-
-
-
-
-
-.dirtySoftware: 
-                lea     _hxcLbaCurrentSectorsBuffer(pc),a0
-                move.l  _hxcLbaCurrentSectorsNumber(pc),d1
-                ;a0:_hxcLbaCurrentSectorsBuffer
-                ;a1:_hxcLbaCurrentSectorsStatus
-                ;d1=_hxcLbaCurrentSectorsNumber
-
-                ;write all 8 sectors to the file
-                    clr.w   -(a7)   ;mode=SEEK_SET
-                    move.w  _hxcLbaDebugFileHandle(pc),-(a7)
-                    lsl.l   #8,d1       ;*512
-                    add.l   d1,d1
-                    move.l  d1,-(a7)    ;offset
-                    move.w  #$42,-(a7)
-                    trap    #1
-                    lea     10(a7),a7
-                    pea     _hxcLbaCurrentSectorsBuffer(pc)
-                    move.l  #8*512,-(a7)
-                    move.w  _hxcLbaDebugFileHandle(pc),-(a7)
-                    move.w  #$40,-(a7)  ;fwrite
-                    trap    #1
-                    lea     12(a7),a7
                 
-                ;clear dirty flag for all sectors
-                    clr.l   (a1)+
-                    clr.l   (a1)+
-
+.return:        movem.l (a7)+,d0/a0-a1
                 rts
 
 
@@ -545,29 +601,28 @@ hxcLbaWriteDirtySectors:
 
 
 
-;return Z=0 if at least one sector is dirty (NOT USED)
-;hxcLbaIsDirty:  move.l   a0,-(a7)
-;                lea     _hxcLbaCurrentSectorsStatus(pc),a0
-;                move.l  (a0)+,d0
-;                or.l    (a0),d0
-;                movem.l (a7)+,a0    ;does not touch CCR
-;                rts
+
+
+
 
 
 
                 dc.l    "XBRA"
                 dc.l    "HCHD"
                 dc.l    0
-_hxcLbaVbl:     movem.l d0-d1/a0-a1,-(a7)
+_hxcLbaVbl:     movem.l d0-d2/a0-a2,-(a7)
                 move.w  $466+2.w,d0                         ;_frlock : vbl counter, not affected by vblsem
                 and.b   #$7f,d0                             ;one time every 128 vbl
                 bne.s   .return
 
                 bsr     fdcAccFloppyIsLocked                ;don't perform anything if we're still doing something
                 bne.s   .return
+
+                bsr     fdcAccFloppyLock
                 bsr     hxcLbaWriteDirtySectors
-                
-.return:        movem.l (a7)+,d0-d1/a0-a1
+                bsr     fdcAccFloppyUnlock
+
+.return:        movem.l (a7)+,d0-d2/a0-a2
                 move.l  _hxcLbaVbl-4(pc),-(a7)
                 rts
 
@@ -616,7 +671,7 @@ _hxcLbaSave:                ds.w    1                                   ;_nflops
 _hxcLbaControlWrite:        ds.b    512                                 ;used to change LBA base address, by WRITING to sector 0
 _hxcLbaControlRead:         ds.b    512
 _hxcLbaCurrentSectorsNumber:ds.l    1                                   ;current start sector
-_hxcLbaCurrentSectorsStatus:ds.b    8*1                                 ;for each sector: 0=ok, otherwise dirty (needed to be written)
+_hxcLbaCurrentSectorsStatus:ds.b    8*1                                 ;for each sector: 0=empty, 80=ok, FF=dirty (need to be written)
 _hxcLbaCurrentSectorsBuffer:ds.b    8*512                               ;8 sectors starting by _fdc_LbaCurrentSector
                 
                 
