@@ -15,11 +15,11 @@
 
 
 
-
 BUILD_TYPE      equ     0       ;0:release, 1:debug
 PROTECTSTACK    equ     0       ;protect against stack overflow. Not needed. If set, rwabs won't be re-entrant.
 ZEUS_BRA        equ     1       ;use bra instead of jump in startup
 SP_LENGHT       equ     2048
+HXCLBACACHESIZE equ     8       ;number of sectors to fetch
 
 
         IFNE    BUILD_TYPE=1
@@ -27,6 +27,9 @@ SP_LENGHT       equ     2048
                 OPT     Y+
         ENDC
 
+
+
+;to do: verify firmware if HXCLBACACHESIZE<>8
 
 
 
@@ -46,13 +49,6 @@ MAIN:
                 ;print welcome message
                     pea     WelcomeMsg1(pc)
                     bsr     fontPrintStd
-;                    move.l  #MAIN_VERSION1,d0
-;                    bsr     fontPrint4D0Ascii
-;                    move.l  #MAIN_VERSION2,d0
-;                    bsr     fontPrint4D0Ascii
-;                    pea     WelcomeMsg2(pc)
-;                    bsr     fontPrint
-;                    addq.l  #8,a7
         
                 pea     SUPER(pc)
                 move.w  #$26,-(a7)
@@ -361,7 +357,7 @@ WelcomeMsg1:    dc.b    "Welcome to HXC_HD. This program allows you to mount a h
                 dc.b    "It needs a HxC Floppy Emulator SDCard by Jean-Francois Del Nero "
                 dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
                 dc.b    "Driver software by G.Bouthenot.",13,10
-                dc.b    "Software version : V0.1 alpha 2"
+                dc.b    "Software version : V0.1 alpha 3"
                 dc.b    " (PREVIEW VERSION). Not suitable for production !",13,10,13,10
                 dc.b    "The SDCard must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"
                 dc.b    " with a Atari-compliant file system. (usually FAT-16).",13,10,13,10,0
@@ -374,10 +370,10 @@ isSuccess:      ds.b    1
         
         
 fonteStd:
-_FONTESTD:      incbin  "..\libext\rasteriz\fonts\tahoma13.iff"
+_FONTESTD:
                 EVEN
 fonteStdBold:
-_FONTESTDBOLD   incbin  "..\libext\rasteriz\fonts\taho13b.iff"
+_FONTESTDBOLD:
                 EVEN
 
 

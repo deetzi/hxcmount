@@ -36,11 +36,9 @@ hxcLbaEnter:
                     lea     _hxcLbaControlWrite(pc),a0
                     move.l  #"HxCF",(a0)+                       ;Signature
                     move.l  #"EDA"<<8,(a0)+                     ;Signature
-                    move.b  #$01,(a0)+                          ;CMD_SET_LBA
-                    clr.b   (a0)+
-                    clr.w   (a0)+
-                    move.w  #$00A5,(a0)+                        ;Enable Write Support
-                    move.w  #(512-14)/2-1,d0
+                    move.l  #$01000000,(a0)+                    ;CMD_SET_LBA, adr0, adr1, adr2
+                    move.l  #$00A50000+HXCLBACACHESIZE<<8,(a0)+ ;adr3, Enable Write Support, number of sectors, 00
+                    move.w  #(512-16)/2-1,d0
 .clearWrite:        clr.w   (a0)+
                     dbra    d0,.clearWrite
 
@@ -86,7 +84,11 @@ hxcLbaEnter:
                ;print message hardware found
                     pea     _hxcLbaMsgFnd(pc)
                     bsr     _hxcLbaPrint2
-                    addq.l  #4,a7
+                    pea     _hxcLbaControlRead+8(pc)                            ;firmware version
+                    bsr     _hxcLbaPrint2
+                    pea     _hxcLbaMsgFnd2(pc)
+                    bsr     _hxcLbaPrint2
+                    lea     12(a7),a7
 
                 ;remove floppies from system
                     clr.w   $4a6.w                                                  ;_nflops
@@ -256,7 +258,7 @@ hxcLbaSectorGet:
                 move.l  _hxcLbaCurrentSectorsNumber(pc),d0                      ;d0=currentSectorsNumber
                 sub.l   d0,d1                                                   ;d1=asked-current=number in currentSectors
                 bcs.s   .cacheOut                               ;if < 0 : out of cache
-                cmp.l   #8,d1
+                cmp.l   #HXCLBACACHESIZE,d1
                 bge.s   .cacheOut                               ;if >=8 : out of cache
 
                 ;asked sector is in the cache segment [0;7]. HxC LBA start=sector 0 of the cache segment
@@ -294,8 +296,16 @@ hxcLbaSectorGet:
                 
                 ;clear hxcLbaCurrentSectorsStatus to "0" (empty)
                     lea     _hxcLbaCurrentSectorsStatus(pc),a0
-                    clr.l   (a0)+
-                    clr.l   (a0)+
+                    IFNE HXCLBACACHESIZE>>2>0
+                        REPT HXCLBACACHESIZE>>2
+                            clr.l   (a0)+
+                        ENDR
+                    ENDC
+                    IFNE HXCLBACACHESIZE&3>0
+                        REPT HXCLBACACHESIZE&3
+                            clr.b   (a0)+
+                        ENDR
+                    ENDC
                     
                 ;dirty sectors written. We can know read 8 sectors into the cache, then returns the first one _or_ just copy the sector to the cache and return it
                 ;   9*4+ 4(a7).L : address to read to
@@ -308,7 +318,7 @@ hxcLbaSectorGet:
                 move.w  9*4+12(a7),d4                                           ;d4:0 for read
                 bne.s   .readdone                                               ;if write, goto readdone (will actually write one to cache)
                 ;read:
-                moveq   #8,d3                                                   ;d3=read 8 sectors
+                moveq   #HXCLBACACHESIZE,d3                                     ;d3=read 8 sectors
                 bsr     _hxcLbaCacheSectors
 
 
@@ -547,7 +557,7 @@ hxcLbaWriteDirtySectors:
 .notdirty:     ;next sector:
                     addq.l  #1,a3
                     addq.w  #1,d1                                               ;next
-                    cmp.w   #8,d1
+                    cmp.w   #HXCLBACACHESIZE,d1
                     bne.s   .nextDirty
 
                 movem.l (a7)+,d3-d5/a3
@@ -650,7 +660,8 @@ _hxcLbaPrint2:  movem.l d0-d2/a0-a2,-(a7)
 _hxcLbaMsg00:       dc.b    "hxcLba: ",0
 _hxcLbaMsgEntr:     dc.b    "Entering HxC Floppy Emulator LBA driver... ",0
 _hxcLbaMsgSear:     dc.b    "searching for HxC Floppy Emulator hardware at A:... ",0
-_hxcLbaMsgFnd:      dc.b    "Found. ",0
+_hxcLbaMsgFnd:      dc.b    "Found HxC Floppy Emulator with firmware ",0
+_hxcLbaMsgFnd2:     dc.b    ". ",0
 _hxcLbaMsgSearRev:  dc.b    "Not found. Using file ",0
 _hxcLbaMsgSearRev2: dc.b    " instead... ",0
 _hxcLbaMsgNotFnd:   dc.b    " file not found. Cannot proceed.",13,10,0
@@ -671,8 +682,9 @@ _hxcLbaSave:                ds.w    1                                   ;_nflops
 _hxcLbaControlWrite:        ds.b    512                                 ;used to change LBA base address, by WRITING to sector 0
 _hxcLbaControlRead:         ds.b    512
 _hxcLbaCurrentSectorsNumber:ds.l    1                                   ;current start sector
-_hxcLbaCurrentSectorsStatus:ds.b    8*1                                 ;for each sector: 0=empty, 80=ok, FF=dirty (need to be written)
-_hxcLbaCurrentSectorsBuffer:ds.b    8*512                               ;8 sectors starting by _fdc_LbaCurrentSector
+_hxcLbaCurrentSectorsStatus:ds.b    HXCLBACACHESIZE*1                   ;for each sector: 0=empty, 80=ok, FF=dirty (need to be written)
+                            EVEN
+_hxcLbaCurrentSectorsBuffer:ds.b    HXCLBACACHESIZE*512                 ;8 sectors starting by _fdc_LbaCurrentSector
                 
                 
         SECTION TEXT
