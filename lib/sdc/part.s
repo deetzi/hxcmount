@@ -30,11 +30,12 @@ sdcPartEnter:
                 lea     _sdcPartBuffer(pc),a0
 
                 ;read sector 0
-                    clr.w   -(a7)
-                    pea     0.w
-                    pea     (a0)
-                    bsr     hxcLbaSectorGet
-                    lea     10(a7),a7
+                    move.w  #1,-(a7)    ;1 sector
+                    clr.w   -(a7)       ;read
+                    pea     0.w         ;sector 0
+                    pea     (a0)        ;address
+                    bsr     hxcLbaRwabs
+                    lea     12(a7),a7
                     
                 lea     _sdcPartBuffer(pc),a0
                 ;is MBR ?
@@ -102,7 +103,7 @@ sdcPartEnter:
                     addq.l  #8,a7
  
                 ;start=end=0                   
-                    lea     _sdcPartStart+4(pc),a1
+                    lea     _sdcPartStart(pc),a1
                     clr.l   (a1)+
                     clr.l   (a1)+
                 
@@ -170,21 +171,18 @@ _sdcPartPrint2: movem.l d0-d2/a0-a2,-(a7)
 
 
 
-;Read a sector of the partition
+;Read/write sectors of the partition
 ;parameters:
-;   4(a7).L : address to read to
+;   4(a7).L : address to read to/write from
 ;   8(a7).L : LBA sector number
+;  12(a7).W : 0 for read, 1 for write
+;  14(a7).w : number of sectors to read/write
 ;registers modified:a0-a2/d0-d2
-sdcPartSectorGet:
-                move.l  8(a7),d0                                               ;d0=asked sector
-                move.l  4(a7),a0                                               ;a0=adress to read to
+sdcPartRwabs:
+                move.l  8(a7),d0
                 add.l   _sdcPartStart(pc),d0
-                clr.w   -(a7)
-                move.l  d0,-(a7)
-                pea     (a0)
-                bsr     hxcLbaSectorGet
-                lea     10(a7),a7
-                rts
+                move.l  d0,8(a7)
+                bra     hxcLbaRwabs
 
 
 

@@ -15,11 +15,10 @@
 
 
 
-BUILD_TYPE      equ     0       ;0:release, 1:debug
+BUILD_TYPE      equ     1       ;0:release, 1:debug
 PROTECTSTACK    equ     0       ;protect against stack overflow. Not needed. If set, rwabs won't be re-entrant.
 ZEUS_BRA        equ     1       ;use bra instead of jump in startup
 SP_LENGHT       equ     2048
-HXCLBACACHESIZE equ     8       ;number of sectors to fetch
 
 
         IFNE    BUILD_TYPE=1
@@ -134,7 +133,7 @@ initLayers: movem.l d1-d7/a0-a6,-(a7)
             moveq   #0,d0
             bra.s   .return
             
-.err:       dc.b    "Failed at initializing.",10,0
+.err:       dc.b    "Failed at initializing.",13,10,0
             even
 
 .errshow:   pea     fonteStdBold(pc)
@@ -297,35 +296,26 @@ my_rw:          CARGS   rwSpMode.w,rwSpBuf.l,rwSpCount.w,rwSpRecno.w,rwSpDev.w,r
                     lea     tmpstack(pc),a7
                 ENDC
                 btst    #0,d2
-                bne.s   .writeN
-                bra.s   .readN
+                bne.s   .write
                 
-    .read1:    ;read d1 sectors
-                movem.l d0-d1/a0,-(a7)
-                    move.l  d0,-(a7)
-                    pea     (a0)
-                    bsr     fsImgSectorGet
-                    addq.l  #8,a7
-                movem.l (a7)+,d0-d1/a0
-                ;next sector:
-                lea     512(a0),a0
-                addq.l  #1,d0
-.readN:         dbra    d1,.read1
+                ;read d1 sectors
+                    move.w  d1,-(a7)        ;d1 sectors
+                    clr.w   -(a7)           ;read
+                    move.l  d0,-(a7)        ;sector number
+                    pea     (a0)            ;address
+                    bsr     fsImgRwabs
+                    lea     12(a7),a7
 
                 bra.s   .success
 
 
-    .write1:    ;write d1 sectors
-                movem.l d0-d1/a0,-(a7)
-                    move.l  d0,-(a7)
-                    pea     (a0)
-                    bsr     fsImgSectorSet
-                    addq.l  #8,a7
-                movem.l (a7)+,d0-d1/a0
-                ;next sector:
-                lea     512(a0),a0
-                addq.l  #1,d0
-.writeN:        dbra    d1,.write1
+.write:     ;write d1 sectors
+                    move.w  d1,-(a7)        ;d1 sectors
+                    st      -(a7)           ;write
+                    move.l  d0,-(a7)        ;sector number
+                    pea     (a0)            ;address
+                    bsr     fsImgRwabs
+                    lea     12(a7),a7
 
 .success:       ;success
                 moveq   #0,d0
@@ -357,7 +347,7 @@ WelcomeMsg1:    dc.b    "Welcome to HXC_HD. This program allows you to mount a h
                 dc.b    "It needs a HxC Floppy Emulator SDCard by Jean-Francois Del Nero "
                 dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
                 dc.b    "Driver software by G.Bouthenot.",13,10
-                dc.b    "Software version : V0.1 alpha 3"
+                dc.b    "Software version : V0.2 alpha 1"
                 dc.b    " (PREVIEW VERSION). Not suitable for production !",13,10,13,10
                 dc.b    "The SDCard must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"
                 dc.b    " with a Atari-compliant file system. (usually FAT-16).",13,10,13,10,0

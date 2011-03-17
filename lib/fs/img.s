@@ -90,10 +90,12 @@ fsImgEnter:
 
                 lea     _fsImgBuffer(pc),a0
                 ;fetch bootsector
-                    pea     0.w
-                    pea     (a0)
-                    bsr     fsImgSectorGet
-                    addq.l  #8,a7
+                    move.w  #1,-(a7)        ;1 sector
+                    clr.w   -(a7)           ;read
+                    pea     0.w             ;sector 0
+                    pea     (a0)            ;address
+                    bsr     fsImgRwabs
+                    lea     12(a7),a7
 
                 lea     _fsImgBuffer(pc),a0
                 lea     fsImgBpb(pc),a1
@@ -162,21 +164,21 @@ fsImgEnter:
 
 .notfound:      ;print fail
                     pea     _fsImgMsgFail(pc)
-                    bsr.s   _fsImgPrint
+                    bsr.s   _fsImgPrint2
                     pea     _fsImgMsgNotFnd(pc)
                     bsr.s   _fsImgPrint2
                     addq.l  #8,a7
-                bra.s   .return
+                bra.s   .fail
 
 .nocontig:      ;print fail
                     pea     _fsImgMsgFail(pc)
-                    bsr.s   _fsImgPrint
+                    bsr.s   _fsImgPrint2
                     pea     _fsImgMsgContig(pc)
                     bsr.s   _fsImgPrint2
                     addq.l  #8,a7
 
                 ;fail                    
-                moveq   #-1,d0
+.fail:          moveq   #-1,d0
 
 .return:
                 movem.l (a7)+,d1-d7/a0-a6
@@ -233,53 +235,18 @@ _fsImgPrint2:   movem.l d0-d2/a0-a2,-(a7)
 
 
 
-;Read a sector of the image file
-;parameters:
-;   4(a7).L : address to read to
+;Read/write sectors of the image file
+;   4(a7).L : address to read to/write from
 ;   8(a7).L : LBA sector number
+;  12(a7).W : 0 for read, 1 for write
+;  14(a7).w : number of sectors to read/write
 ;registers modified:a0-a2/d0-d2
-fsImgSectorGet:
-                move.l  8(a7),d0                                           ;d0=asked sector
-                move.l  4(a7),a0                                           ;a0=adress to read to
-
-                ;standard rout:
-                    add.l   _fsImgSectorBase(pc),d0
-                    ;move.l  d0,-(a7)
-                    ;pea     (a0)
-                    ;bsr     sdcPartSectorGet
-                    ;addq.l  #8,a7
-
-                ;shortcut to sdcPartSectorGet:                
-                    add.l   _sdcPartStart(pc),d0
-                    clr.w   -(a7)
-                    move.l  d0,-(a7)
-                    pea     (a0)
-                    bsr     hxcLbaSectorGet
-                    lea     10(a7),a7
-
-                rts
-fsImgSectorSet:
-                move.l  8(a7),d0                                           ;d0=asked sector
-                move.l  4(a7),a0                                           ;a0=adress to read to
-
-                ;standard rout:
-                    add.l   _fsImgSectorBase(pc),d0
-                    ;move.l  d0,-(a7)
-                    ;pea     (a0)
-                    ;bsr     sdcPartSectorGet
-                    ;addq.l  #8,a7
-
-                ;shortcut to sdcPartSectorGet:                
-                    add.l   _sdcPartStart(pc),d0
-                    move.w  #1,-(a7)
-                    move.l  d0,-(a7)
-                    pea     (a0)
-                    bsr     hxcLbaSectorGet
-                    lea     10(a7),a7
-
-                rts
-
-
+fsImgRwabs:
+                move.l  8(a7),d0
+                add.l   _fsImgSectorBase(pc),d0
+                move.l  d0,8(a7)
+                bra     sdcPartRwabs
+                
 
 
 

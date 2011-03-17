@@ -98,38 +98,19 @@ fdcAccUnselect:
                 move.w  (sp)+,d0
                 rts
 
-fdcAccFloppyLock:
-                move.l  a0,-(a7)
-                ;wait for the hardware to be ready, then claim the resource
-                    lea     _fdcAccIsActivated+1(pc),a0
-.waitSemaphore:     tas     (a0)
-                    bne.s   .waitSemaphore
-                st      $43e.w  ;flock
+fdcAccLock:     st      $43e.w  ;flock
                 
                 ;select Drive A, Side 0
                     bsr     fdcAccWait
                     bsr.s   fdcAccSelectDriveASide0
-
-                move.l  (a7)+,a0
                 rts
 
-fdcAccFloppyUnlock:
-                move.l  a0,-(a7)
-                ;free the hardware resource semaphore
-                    lea     _fdcAccIsActivated+1(pc),a0
-                    sf     (a0)
-                sf      $43e.w      ;flock
-                move.l  (a7)+,a0
+fdcAccUnlock:   sf      $43e.w      ;flock
                 rts
 
-fdcAccFloppyIsLocked:   ;returns Z=0 if floppy locked, Z=1 otherwise
+fdcAccIsLocked: ;returns Z=0 if floppy locked, Z=1 otherwise
                 tst.w   $43e.w      ;flock
-                bne.s   .return     ;Z=0: floppy locked
-                move.l  a0,-(a7)
-                lea     _fdcAccIsActivated+1(pc),a0
-                tst.b    (a0)
-                movem.l  (a7)+,a0   ; movem leaves CR
-.return:        rts
+                rts
 
 ;Ecrit d0 dans les registres FDC ou lit un registre dans d0
 ;entrée : d0.w si set

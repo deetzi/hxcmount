@@ -28,13 +28,16 @@ sdcFat32Enter:
                 ;call bottom layer enter
                     bsr sdcPartEnter
 
-                lea     _sdcFat32Buffer(pc),a0
+                lea     _sdcFat32Buffer-4(pc),a0
+                clr.l   (a0)+           ; sector 0 in buffer
 
                 ;read sector 0
-                    pea     0.w
-                    pea     (a0)
-                    bsr     sdcPartSectorGet
-                    addq.l  #8,a7
+                    move.w  #1,-(a7)    ; 1 sector
+                    clr.w   -(a7)       ; read
+                    pea     0.w         ; sector 0
+                    pea     (a0)        ; address
+                    bsr     sdcPartRwabs
+                    lea     12(a7),a7
                     
                 lea     _sdcFat32Buffer(pc),a0
                 ;is boot sector ?
@@ -334,12 +337,15 @@ _sdcFat32GetFileInCluster:
                 ;d0: current sector number
                 ;d2: number of sectors to search -1
 .nxtSector:     ;get the sector
-                    lea     _sdcFat32Buffer(pc),a1
+                    lea     _sdcFat32Buffer-4(pc),a1
+                    move.l  d0,(a1)+                                            ;write current sector number
                     movem.l d0-d2/a0-a2,-(a7)
-                    move.l  d0,-(a7)
-                    pea     (a1)
-                    bsr     sdcPartSectorGet
-                    addq.l  #8,a7
+                    move.w  #1,-(a7)        ;1 sector
+                    clr.w   -(a7)           ;read
+                    move.l  d0,-(a7)        ;sector number
+                    pea     (a1)            ;address
+                    bsr     sdcPartRwabs
+                    lea     12(a7),a7
                     movem.l (a7)+,d0-d2/a0-a2
                 
                 move.w  #512/32-1,d3                         ;d3=number of entries to try-1
@@ -525,15 +531,23 @@ _sdcFat32GetNextCluster:
                     lsl.w   #2,d0                       ;d0:entry offset
                 
                 lea     _sdcFat32Buffer(pc),a1
+                ;check if the desired sector is already loaded
+                    cmp.l   -4(a1),d1
+                    beq.s   .sectorHere
+                
+                move.l  d1,-4(a1)                       ;write sector number                
+                
                 ;read sector
                     movem.l d0-d2/a0-a2,-(a7)
-                    move.l  d1,-(a7)
-                    pea     (a1)
-                    bsr     sdcPartSectorGet
-                    addq.l  #8,a7
+                    move.w  #1,-(a7)        ;1 sector
+                    clr.w   -(a7)           ;read
+                    move.l  d1,-(a7)        ;sector number
+                    pea     (a1)            ;address
+                    bsr     sdcPartRwabs
+                    lea     12(a7),a7
                     movem.l (a7)+,d0-d2/a0-a2
                 
-                ;get next cluster number
+.sectorHere     ;get next cluster number
                     adda.w  d0,a1                       ;a1:next cluster pointer
                     addq.l  #4,a1
                     move.b  -(a1),d0
@@ -569,6 +583,8 @@ _sdcFat32MsgNoFat:  dc.b    "the partition is not FAT32 formatted",13,10,0
 _sdcFat32IsActivated:
                 ds.b    1                                   ;is the driver activated ? 0:no -1:yes
                 EVEN
+
+                ds.l    1                                   ;number of sector in buffer
 _sdcFat32Buffer:ds.b    512                                 ;Internal buffer
                                                             ;steem
 _sdcFat32Bpb:   ds.b    8   ;+$00 oem name                       ;WINIMAGE
