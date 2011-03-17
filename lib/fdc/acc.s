@@ -123,11 +123,13 @@ fdcAccFloppyUnlock:
                 rts
 
 fdcAccFloppyIsLocked:   ;returns Z=0 if floppy locked, Z=1 otherwise
+                tst.w   $43e.w      ;flock
+                bne.s   .return     ;Z=0: floppy locked
                 move.l  a0,-(a7)
                 lea     _fdcAccIsActivated+1(pc),a0
                 tst.b    (a0)
                 movem.l  (a7)+,a0   ; movem leaves CR
-                rts
+.return:        rts
 
 ;Ecrit d0 dans les registres FDC ou lit un registre dans d0
 ;entrée : d0.w si set

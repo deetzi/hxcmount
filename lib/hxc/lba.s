@@ -139,8 +139,16 @@ hxcLbaEnter:
                     move.l  d0,(a0)
                     moveq   #0,d0
                     lea     _hxcLbaCurrentSectorsStatus(pc),a0
-                    move.l  d0,(a0)+
-                    move.l  d0,(a0)+
+                    IFNE HXCLBACACHESIZE>>2>0
+                        REPT HXCLBACACHESIZE>>2
+                            move.l  d0,(a0)+
+                        ENDR
+                    ENDC
+                    IFNE HXCLBACACHESIZE&3>0
+                        REPT HXCLBACACHESIZE&3
+                            move.b  d0,(a0)+
+                        ENDR
+                    ENDC
 
                 ;install our VBL
                     lea     _hxcLbaVbl(pc),a0
