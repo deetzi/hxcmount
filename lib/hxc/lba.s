@@ -267,7 +267,6 @@ hxcLbaRwabs:    movem.l d3/a3-a4,-(a7)
 .sectorsLoop:
                 sub.w   #63,d3
                 bcs.s   .last
-                beq.s   .return
                 
                 move.w  #63,-(a7)               ;nb sectors
                 move.w  12+2+12(a7),-(a7)       ;read/write (+2 due to stack usage)
@@ -280,6 +279,8 @@ hxcLbaRwabs:    movem.l d3/a3-a4,-(a7)
                 bra.s   .sectorsLoop
                 
 .last:          add.w   #63,d3                  ;d3 was < 0
+                beq.s   .return
+
                 move.w  d3,-(a7)                ;nb sectors
                 move.w  12+2+12(a7),-(a7)       ;read/write (+2 due to stack usage)
                 pea     (a3)                    ;sector number
