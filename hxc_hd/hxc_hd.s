@@ -291,33 +291,21 @@ my_rw:          CARGS   rwSpMode.w,rwSpBuf.l,rwSpCount.w,rwSpRecno.w,rwSpDev.w,r
                 move.w  rwSpCount(sp),d1                    ;d1:count.w
                 move.l  rwSpBuf(sp),a0                      ;a0:dest buf
                 move.w  rwSpMode(sp),d2                     ;d2:mode: bit0=r/w, bit1=nomediach, bit2=noretries, bit3=notranslate
+                and.w   #1,d2                               ;d2:0 for read, 1 for write
                 IFNE    PROTECTSTACK
                     move.l  a7,savestack
                     lea     tmpstack(pc),a7
                 ENDC
-                btst    #0,d2
-                bne.s   .write
                 
                 ;read d1 sectors
                     move.w  d1,-(a7)        ;d1 sectors
-                    clr.w   -(a7)           ;read
+                    move.w  d2,-(a7)        ;read/write
                     move.l  d0,-(a7)        ;sector number
                     pea     (a0)            ;address
                     bsr     fsImgRwabs
                     lea     12(a7),a7
 
-                bra.s   .success
-
-
-.write:     ;write d1 sectors
-                    move.w  d1,-(a7)        ;d1 sectors
-                    st      -(a7)           ;write
-                    move.l  d0,-(a7)        ;sector number
-                    pea     (a0)            ;address
-                    bsr     fsImgRwabs
-                    lea     12(a7),a7
-
-.success:       ;success
+                ;success
                 moveq   #0,d0
                 IFNE    PROTECTSTACK
                     move.l  savestack,a7
@@ -347,7 +335,7 @@ WelcomeMsg1:    dc.b    "Welcome to HXC_HD. This program allows you to mount a h
                 dc.b    "It needs a HxC Floppy Emulator SDCard by Jean-Francois Del Nero "
                 dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
                 dc.b    "Driver software by G.Bouthenot.",13,10
-                dc.b    "Software version : V0.2 alpha 1"
+                dc.b    "Software version : V0.2 alpha 2"
                 dc.b    " (PREVIEW VERSION). Not suitable for production !",13,10,13,10
                 dc.b    "The SDCard must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"
                 dc.b    " with a Atari-compliant file system. (usually FAT-16).",13,10,13,10,0

@@ -98,7 +98,7 @@ hxcLbaEnter:
                     cmp.l   #".2.0",(a1)+
                     blt     .firmTooOld
                     bgt.s   .firmOk
-                    cmp.w   #"j"<<8,(a1)+
+                    cmp.w   #"m"<<8,(a1)+
                     blt.s   .firmTooOld
                 
 .firmOk:        ;remove floppies from system
@@ -270,7 +270,7 @@ hxcLbaRwabs:    movem.l d3/a3-a4,-(a7)
                 beq.s   .return
                 
                 move.w  #63,-(a7)               ;nb sectors
-                move.w  12+2+12(a7),-(a7)       ;read/write
+                move.w  12+2+12(a7),-(a7)       ;read/write (+2 due to stack usage)
                 pea     (a3)                    ;sector number
                 pea     (a4)                    ;address
                 bsr.s   _hhxcLbaRwabs
@@ -279,9 +279,9 @@ hxcLbaRwabs:    movem.l d3/a3-a4,-(a7)
                 lea     63*512(a4),a4           ;address + 63 sectors
                 bra.s   .sectorsLoop
                 
-.last:          add.w   #63,d3
+.last:          add.w   #63,d3                  ;d3 was < 0
                 move.w  d3,-(a7)                ;nb sectors
-                move.w  12+2+12(a7),-(a7)       ;read/write
+                move.w  12+2+12(a7),-(a7)       ;read/write (+2 due to stack usage)
                 pea     (a3)                    ;sector number
                 pea     (a4)                    ;address
                 bsr.s   _hhxcLbaRwabs
@@ -336,19 +336,22 @@ _hhxcLbaRwabs:
 ;  12(a7).W : 0 for read, 1 for write
 ;  14(a7).w : number of sectors to read/write (63 max)
 ;registers modified:a0-a2/d0-d2
-                movem.l d3-d7/a3-a6,-(a7)
-                
+
                 bsr     hxcLbaLock
+                movem.l d3-d7/a3-a6,-(a7)
 
                 move.l  9*4+4(a7),a0            ;address
                 move.l  9*4+8(a7),d2            ;asked sector
                 move.w  9*4+14(a7),d3           ;number of sectors
                 move.w  9*4+12(a7),d4           ;0 for read, 1 for write
 
+                bsr     _hxcLbaBaseChange
+                move.w  d3,d2
+
                 bsr.s   _hxcLbaCacheSectors
 
-                bsr     hxcLbaUnlock
                 movem.l (a7)+,d3-d7/a3-a6
+                bsr     hxcLbaUnlock
                 rts
                 
 
@@ -382,14 +385,9 @@ _hhxcLbaRwabs:
 _hxcLbaCacheSectors:
 ; read sectors from the floppy to the cache OR write sectors from the cache to the floppy
 ;a0.l: address
-;d2.l: LBA base sector
-;d3.w: nb sectors to read/write [1;8]
+;d2.w: nb sectors to read/write [1;8]
 ;d4.w: read(0) or write
 ;modifies d0,d1,d2,a0,a1,a2
-
-                bsr     _hxcLbaBaseChange
-                
-                move.w  d3,d2
 
                 lea     _hxcLbaIsHardware(pc),a1
                 tst.b   (a1)
@@ -434,7 +432,7 @@ _hxcLbaCacheHardware:
                     move.l  a0,d0
                     bsr     fdcAccDmaAdrSet
                     
-                moveq   #0,d1                                               ;start sector
+                moveq   #1,d1                                               ;start sector
 
                 tst.w   d4
                 bne.s   .write
@@ -444,11 +442,11 @@ _hxcLbaCacheHardware:
                 move.w  d2,d0                                               ;nb sectors to process by DMA
                 bsr     fdcAccSectorcountRegSet
                 subq.w  #1,d2                                               ;number of sectors to read-1 (for dbra)
-.readnxt:       addq.w  #1,d1                                               ;sector number starts at 1
-                move.w  d1,d0                                               ;sector number
+.readnxt:       move.w  d1,d0                                               ;sector number
                 bsr     fdcAccSectorRegSet
                 move.w  #$88,d0                                             ;READ SECTOR, no spinup
                 bsr     fdcAccSendCommandWait
+                addq.w  #1,d1                                               ;next sector
                 dbra    d2,.readnxt
 
                 bra.s   .return
@@ -459,11 +457,11 @@ _hxcLbaCacheHardware:
                 move.w  d2,d0                                               ;nb sectors to process by DMA
                 bsr     fdcAccSectorcountRegSet
                 subq.w  #1,d2                                               ;number of sectors to read-1 (for dbra)
-.writenxt:      addq.w  #1,d1                                               ;sector number starts at 1
-                move.w  d1,d0                                               ;sector number
+.writenxt:      move.w  d1,d0                                               ;sector number
                 bsr     fdcAccSectorRegSet
                 move.w  #$A8,d0                                             ;***WRITE*** SECTOR, no spinup
                 bsr     fdcAccSendCommandWait
+                addq.w  #1,d1                                               ;next sector
                 dbra    d2,.writenxt
 
 .return:        rts
@@ -499,7 +497,7 @@ _hxcLbaBaseChange:
                 ;read or write ?
                     tst.w   d4
                     beq.s   .ok
-                    move.b  #$A5,d4
+                    move.b  #$5A,d4                                 ;$5A:Write only, $A5:Write enabled
                     .ok:
                     move.b  d4,(a1)+                                ;write enable (0 for read $5A for write)
                     

@@ -105,7 +105,8 @@ fdcAccLock:     st      $43e.w  ;flock
                     bsr.s   fdcAccSelectDriveASide0
                 rts
 
-fdcAccUnlock:   sf      $43e.w      ;flock
+fdcAccUnlock:   bsr     fdcAccWait
+                sf      $43e.w      ;flock
                 rts
 
 fdcAccIsLocked: ;returns Z=0 if floppy locked, Z=1 otherwise
