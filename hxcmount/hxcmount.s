@@ -11,11 +11,11 @@
                 OPT     OW2-    ;don't warn when optimising d16(An) -> (An)
                 OPT     W+      ;show warnings
                 OPT     Y-      ;debug source
+                OUTPUT  .PRG
 
 
 
-
-BUILD_TYPE      equ     1       ;0:release, 1:debug
+BUILD_TYPE      equ     0       ;0:release, 1:debug
 PROTECTSTACK    equ     0       ;protect against stack overflow. Not needed. If set, rwabs won't be re-entrant.
 ZEUS_BRA        equ     1       ;use bra instead of jump in startup
 SP_LENGHT       equ     2048
@@ -334,9 +334,7 @@ mainPrgFail:
 WelcomeMsg1:    dc.b    "Welcome to HXC_HD. This program allows you to mount a hard disk image file on your Atari ST. "
                 dc.b    "It needs a HxC Floppy Emulator SDCard by Jean-Francois Del Nero "
                 dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
-                dc.b    "Driver software by G.Bouthenot.",13,10
-                dc.b    "Software version : V0.2 alpha 2"
-                dc.b    " (PREVIEW VERSION). Not suitable for production !",13,10,13,10
+                dc.b    "Software version : V1.0. Driver software by G.Bouthenot. See http://hxcmount.atomas.com/",13,10
                 dc.b    "The SDCard must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"
                 dc.b    " with a Atari-compliant file system. (usually FAT-16).",13,10,13,10,0
 SuccessMsg:     dc.b    "Success. New drive mounted as "
