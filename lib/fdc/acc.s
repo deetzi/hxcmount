@@ -192,9 +192,9 @@ fdcAccSectorcountRegSet:
 fdcAccDmaReadMode:
                 move.l  a0,-(sp)
                 lea     $ffff8606.w,a0
-                move.w  #$90, (a0)
+                move.w  #$90,(a0)
                 move.w  #$190,(a0)
-                move.w  #$90, (a0)
+                move.w  #$90,(a0)
                 lea     _fdcAccDmaMode(pc),a0
                 clr.w   (a0)
                 move.l  (sp)+,a0
@@ -203,7 +203,7 @@ fdcAccDmaWriteMode:
                 move.l  a0,-(sp)
                 lea     $ffff8606.w,a0
                 move.w  #$190,(a0)
-                move.w  #$90, (a0)
+                move.w  #$90,(a0)
                 move.w  #$190,(a0)
                 lea     _fdcAccDmaMode(pc),a0
                 move.w  #$100,(a0)

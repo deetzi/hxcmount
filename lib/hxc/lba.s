@@ -102,8 +102,8 @@ hxcLbaEnter:
                     blt.s   .firmTooOld
                 
 .firmOk:        ;remove floppies from system
-                    clr.w   $4a6.w                                                  ;_nflops
-                    and.w   #$fffc,$4c2+2.w                                         ;(_drvbits+2)
+                ;    clr.w   $4a6.w                                                  ;_nflops
+                ;    and.w   #$fffc,$4c2+2.w                                         ;(_drvbits+2)
                 
                 bra.s   .success
 

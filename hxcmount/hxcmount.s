@@ -282,7 +282,16 @@ my_rw:          CARGS   rwSpMode.w,rwSpBuf.l,rwSpCount.w,rwSpRecno.w,rwSpDev.w,r
                 beq.s   .ourdevice
                 move.l  my_rw-4(pc),a0                      ;Not our device : jump to previous
                 jmp     (a0)
-.ourdevice:     moveq   #0,d0                               ;Our device
+.ourdevice:     bsr     fdcAccLock
+
+                move.w  #255,d0                                             ;track number
+                bsr     fdcAccDataRegSet
+                moveq   #$13,d0                                             ;SEEK, no verify, 3ms
+                bsr     fdcAccSendCommandWait
+
+                bsr     fdcAccUnlock
+
+				moveq   #0,d0                               ;Our device
                 move.w  rwSpRecno(sp),d0                    ;d0:recno
                 cmp.w   #-1,d0
                 bne.s   .recno
