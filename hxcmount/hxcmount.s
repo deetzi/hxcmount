@@ -36,6 +36,7 @@ SP_LENGHT       equ     2048
 
                 include "..\lib\font.s"
                 include "..\lib\util.s"
+				include "..\lib\cfg\load.s"
                 include "..\lib\fdc\acc.s"
                 include "..\lib\hxc\lba.s"
                 include "..\lib\sdc\part.s"
@@ -47,8 +48,10 @@ MAIN:
 
                 ;print welcome message
                     pea     WelcomeMsg1(pc)
-                    bsr     fontPrintStd
-        
+                    bsr     fontPrintStd       
+
+				bsr		cfgCmdline
+		
                 pea     SUPER(pc)
                 move.w  #$26,-(a7)
                 trap    #14
@@ -341,10 +344,11 @@ mainPrgFail:
 
         SECTION DATA
 WelcomeMsg1:    dc.b    "Welcome to HXC_HD. This program allows you to mount a hard disk image file on your Atari ST. "
-                dc.b    "It needs a HxC Floppy Emulator SDCard by Jean-Francois Del Nero "
-                dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
-                dc.b    "Software version : V1.0. Driver software by G.Bouthenot. See http://hxcmount.atomas.com/",13,10
-                dc.b    "The SDCard must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"
+                dc.b    "It needs a Gotek Floppy Emulator with HxC by Jean-Francois Del Nero or Flash Floppy by Keir Fraser"
+ ;               dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
+                dc.b    "Current version: 1.1 Updates by D.Cowderoy.",13,10
+                dc.b    "Original version : V1.0. Driver software by G.Bouthenot. See http://hxcmount.atomas.com/",13,10
+                dc.b    "The media must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"
                 dc.b    " with a Atari-compliant file system. (usually FAT-16).",13,10,13,10,0
 SuccessMsg:     dc.b    "Success. New drive mounted as "
 SuccessMsgLtr:  dc.b    "X:, data size=0x"
@@ -370,7 +374,6 @@ _FONTESTDBOLD:
 
 ;sauvegarde de l'état (ne pas changer ordre)
 ourDeviceLetter:    ds.w    1           ;2 for C:, 3 for D:...
-
 
         IFNE    PROTECTSTACK
 savestack:      ds.l    1

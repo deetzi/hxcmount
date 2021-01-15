@@ -26,7 +26,7 @@ fsImgEnter:
                 ;call bottom layer enter
                     bsr sdcFat32Enter
                     
-                lea     .fname(pc),a0
+                lea     _fsImgFName(pc),a0
                 bsr     sdcFat32GetFile
                 beq     .notfound
                 
@@ -42,7 +42,7 @@ fsImgEnter:
                     bsr     _fsImgPrint2
                     addq.l  #4,a7
 
-                lea     .fname(pc),a0
+                lea     _fsImgFName(pc),a0
                 move.l  d3,(a0)
                 move.l  d4,4(a0)
                 move.l  d5,8(a0)
@@ -62,10 +62,10 @@ fsImgEnter:
                     bsr     _fsImgPrint2
                     addq.l  #4,a7
 
-                bra.s    .next
+ ;               bra.s    .next
 
-.fname:         dc.b     "IMG?????IMA",0
-                EVEN                   
+;.fname:         dc.b     "IMG?????IMA",0
+;                EVEN                   
 .next:
                 ;d0:first cluster of the file
                 ;d1:filesize
@@ -264,6 +264,8 @@ _fsImgMsgFail:   dc.b    "FAILED: ",0
 _fsImgMsgLeav:   dc.b    "Leaving Image File driver driver; unloading image file... ",0
 _fsImgMsgNotFnd  dc.b    "no file found",13,10,0
 _fsImgMsgContig  dc.b    "cannot load image file because the file is fragmented. Please defragment the SDcard, or copy the file to a freshly formatted media.",13,10,0
+_fsImgFName:	 dc.b     "IMG?????IMA",0
+
         EVEN
 
         SECTION BSS
