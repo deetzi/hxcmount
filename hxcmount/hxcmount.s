@@ -19,6 +19,7 @@ BUILD_TYPE      equ     0       ;0:release, 1:debug
 PROTECTSTACK    equ     0       ;protect against stack overflow. Not needed. If set, rwabs won't be re-entrant.
 ZEUS_BRA        equ     1       ;use bra instead of jump in startup
 SP_LENGHT       equ     2048
+RESET_PROOF		equ		1		;0:normal 1:reset proof
 
 
         IFNE    BUILD_TYPE=1
@@ -33,10 +34,14 @@ SP_LENGHT       equ     2048
 
 
                 include "..\libext\start_up.s"
+				include "..\lib\cfg\load.s"
+
+			IF RESET_PROOF
+                include "..\lib\ram\rst.s"
+			ENDIF
 
                 include "..\lib\font.s"
                 include "..\lib\util.s"
-				include "..\lib\cfg\load.s"
                 include "..\lib\fdc\acc.s"
                 include "..\lib\hxc\lba.s"
                 include "..\lib\sdc\part.s"
@@ -51,7 +56,14 @@ MAIN:
                     bsr     fontPrintStd       
 
 				bsr		cfgCmdline
-		
+				
+			IF RESET_PROOF            
+                pea     ramRstInit(pc)
+                move.w  #$26,-(a7)
+                trap    #14
+                addq.l  #6,a7
+			
+			ELSE		
                 pea     SUPER(pc)
                 move.w  #$26,-(a7)
                 trap    #14
@@ -115,7 +127,7 @@ pushAnyKey:     dc.b    "Push any key",13,10,0
 prgFname:       dc.b    "shell.prg",0
                 EVEN
 env:            dc.w    0
-
+			ENDIF
                 
 
 ;init all hardware and software layers
@@ -238,6 +250,12 @@ mainPrg:
                     pea     SuccessMsg(pc)
                     bsr     fontPrintCust
                     addq.l  #8,a7
+
+			IF RESET_PROOF
+				move.w	#2,$446.W 	;Boot C
+				lea     ramRstLoaded(pc),a0
+				st.b      (a0)
+			ENDIF
                 
                 lea     isSuccess(pc),a0
                 st      (a0)
@@ -344,8 +362,7 @@ mainPrgFail:
 
         SECTION DATA
 WelcomeMsg1:    dc.b    "Welcome to HXC_HD. This program allows you to mount a hard disk image file on your Atari ST. "
-                dc.b    "It needs a Gotek Floppy Emulator with HxC by Jean-Francois Del Nero or Flash Floppy by Keir Fraser"
- ;               dc.b    "(http://hxc2001.free.fr/floppy_drive_emulator/ for more informations). ",13,10
+                dc.b    "It needs a Gotek Floppy Emulator with HxC by Jean-Francois Del Nero or Flash Floppy by Keir Fraser",13,10
                 dc.b    "Current version: 1.1 Updates by D.Cowderoy.",13,10
                 dc.b    "Original version : V1.0. Driver software by G.Bouthenot. See http://hxcmount.atomas.com/",13,10
                 dc.b    "The media must be FAT32-formatted. It must contain a file named 'IMG*.IMA'"

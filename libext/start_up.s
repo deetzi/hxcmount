@@ -52,6 +52,7 @@ ___ZEU_STARTUP:
 	addi.l	#512,d0
  ENDC
 	bclr	#0,d0		;pair !
+	move.l	d0,4(a1)	;save program_length
 	lea.l	0(a0,d0.l),sp
 	move.l	d0,-(sp)
 	pea	(a0)
@@ -88,4 +89,6 @@ ___ZEU_STARTUP:
  ENDC
 
 BASEPAGE_ADR:
+	ds.l	1
+program_length:
 	ds.l	1
